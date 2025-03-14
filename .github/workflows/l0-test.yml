@@ -67,7 +67,7 @@ jobs:
 
           echo '${{ toJson(github.event) }}' > githubData.json
 
-          curl -s -X POST \
+          curl -s --fail-with-body -X POST \
             -H "Content-Type: application/json" \
             -d @githubData.json \
             "$JENKINS_URL/generic-webhook-trigger/invoke?token=$TOKEN"
@@ -77,6 +77,25 @@ jobs:
     runs-on: linux-amd64-cpu4
     if: github.event_name == 'workflow_dispatch'
     steps:
+      - name: Update commit status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            state = 'pending'
+            description = 'collecting test results'
+            if ('${{ github.event.inputs.test_result }}' == 'SUCCESS') {
+              state = 'success'
+              description = 'test passed, collecting test results'
+            }
+            github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              context: 'blossom-ci',
+              sha: '${{ github.event.inputs.sha }}',
+              target_url: 'https://github.com/NVIDIA/TensorRT-LLM/actions/runs/' + context.runId,
+              state: state,
+              description: description,
+            })
       - name: Collect test result
         run: rm -rf results && mkdir results && cd results && curl --user svc_tensorrt:${{ secrets.ARTIFACTORY_TOKEN }} -L ${{ github.event.inputs.test_results_url }} | tar -xz
       - name: Create test summary
